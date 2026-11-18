@@ -56,6 +56,9 @@ final class AppModel: ObservableObject {
     @Published var annotationSelection: UUID?
     @Published var tool: AnnotationTool = .select
     @Published var textEdit: TextEdit?
+    /// 標記內部剪貼簿；不寫入系統剪貼簿，僅記錄複製當下的 changeCount 以判斷之後系統剪貼簿是否被更新。
+    private var annotationClipboard = AnnotationClipboard()
+    private var clipboardChangeCount = 0
     let styleStore = AnnotationStyleStore()
 
     struct Toast: Equatable {
@@ -150,6 +153,7 @@ final class AppModel: ObservableObject {
         thumbnails = [:]
         selection = nil
         annotations.clear()
+        annotationClipboard.clear()
         annotationSelection = nil
         textEdit = nil
     }
@@ -276,6 +280,25 @@ final class AppModel: ObservableObject {
         let rect = AnnotationImagePlacement.defaultRect(canvasHeightRatio: ratio, center: center,
                                                         aspect: CGFloat(cg.width) / CGFloat(cg.height))
         let added = annotations.add(Annotation(shape: .image(rect: rect, image: cg)), canvasHeightRatio: ratio)
+        tool = .select
+        annotationSelection = added.id
+    }
+
+    /// 標記模式 Cmd+C：有選取標記才複製到內部剪貼簿（不寫系統剪貼簿）；否則無作用。
+    func copySelectedAnnotation() {
+        guard textEdit == nil, let id = annotationSelection, let a = annotations.annotation(id: id) else { return }
+        annotationClipboard.copy(a)
+        clipboardChangeCount = NSPasteboard.general.changeCount
+    }
+
+    /// 標記模式 Cmd+V：內部有內容且系統剪貼簿自複製後未更新 → 貼標記副本（選取、回到選取工具）；否則貼剪貼簿圖片。
+    func pasteAnnotation(visibleCenter center: CGPoint) {
+        guard annotationClipboard.hasContent, NSPasteboard.general.changeCount == clipboardChangeCount,
+              let copy = annotationClipboard.pasted(canvasHeightRatio: canvasHeightRatio) else {
+            pasteImageAnnotation(visibleCenter: center)
+            return
+        }
+        let added = annotations.add(copy, canvasHeightRatio: canvasHeightRatio)
         tool = .select
         annotationSelection = added.id
     }

@@ -87,6 +87,9 @@ struct ComposeView: View {
             // 文字框編輯中交給輸入框（按鈕停用時快捷鍵不攔截）。
             Button("") { paste() }.keyboardShortcut("v", modifiers: .command)
                 .disabled(model.textEdit != nil)
+            // 標記模式且有選取（非文字輸入）才攔截 Cmd+C；其餘交給系統／輸入框。
+            Button("") { model.copySelectedAnnotation() }.keyboardShortcut("c", modifiers: .command)
+                .disabled(model.mode != .annotate || model.annotationSelection == nil || model.textEdit != nil)
             Button("") { zoom = ViewZoom.zoomedIn(zoom) }.keyboardShortcut("=", modifiers: .command)
             Button("") { zoom = ViewZoom.zoomedOut(zoom) }.keyboardShortcut("-", modifiers: .command)
             Button("") { zoom = ViewZoom.default }.keyboardShortcut("0", modifiers: .command)
@@ -96,10 +99,10 @@ struct ComposeView: View {
         .opacity(0).frame(width: 0, height: 0)
     }
 
-    /// 標記模式貼上為圖片標記（置於可視範圍中心），排版模式維持匯入。
+    /// 標記模式貼上標記副本或圖片標記（置於可視範圍中心），排版模式維持匯入。
     private func paste() {
         if model.mode == .annotate {
-            model.pasteImageAnnotation(visibleCenter: scrollAccess.visibleCenter())
+            model.pasteAnnotation(visibleCenter: scrollAccess.visibleCenter())
         } else {
             model.pasteFromClipboard()
         }
