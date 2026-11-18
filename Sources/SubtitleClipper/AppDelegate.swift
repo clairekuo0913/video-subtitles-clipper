@@ -24,10 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             styleMask: [.titled, .closable, .resizable, .miniaturizable],
                             backing: .buffered, defer: false)
         panel.hidesOnDeactivate = false
-        applyFloating()
+        applyFloating(model.floatsOverAll)
         // 視窗內設定選單改變時同步套用（單向：model → 視窗層級）。
-        floatingObserver = model.$floatsOverAll.dropFirst().sink { [weak self] _ in
-            MainActor.assumeIsolated { self?.applyFloating() }
+        // 注意：@Published 在屬性賦值「之前」發出新值，必須使用發出的值，不能回頭讀 model。
+        floatingObserver = model.$floatsOverAll.dropFirst().sink { [weak self] newValue in
+            MainActor.assumeIsolated { self?.applyFloating(newValue) }
         }
         window = panel
         window.title = "字幕拼接"
@@ -62,8 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// 開＝浮動面板且可出現在全螢幕 Space；關＝一般視窗。
-    private func applyFloating() {
-        if model.floatsOverAll {
+    private func applyFloating(_ floating: Bool) {
+        if floating {
             panel.isFloatingPanel = true
             panel.level = .floating
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
