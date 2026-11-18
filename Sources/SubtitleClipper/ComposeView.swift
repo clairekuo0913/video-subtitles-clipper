@@ -48,11 +48,36 @@ struct ComposeView: View {
 
     // MARK: Toolbar
 
+    /// 視窗內設定（選單列被隱藏時使用）；項目與選單列右鍵選單一致。
+    private var settingsMenu: some View {
+        Menu {
+            Toggle("同時存檔到資料夾", isOn: $model.saveEnabled)
+            Button(model.saveFolder.map { "存檔資料夾：\(($0 as NSString).lastPathComponent)…" } ?? "選擇存檔資料夾…") {
+                model.chooseSaveFolder()
+            }
+            Toggle("浮在所有視窗之上", isOn: $model.floatsOverAll)
+            Divider()
+            Button(model.hotKeyRegistered
+                   ? "快捷鍵 ⌃⌥Space：開關視窗"
+                   : "⚠︎ 快捷鍵 ⌃⌥Space 無法使用（可能被其他 App 佔用）") {}
+                .disabled(true)
+            Divider()
+            Button("離開") { NSApp.terminate(nil) }
+        } label: {
+            Image(systemName: "gearshape")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("設定")
+    }
+
     private var toolbar: some View {
         HStack(spacing: 10) {
             Button("匯入…") { model.importPanel() }
             Button("清空") { model.clear() }.disabled(model.list.items.isEmpty)
             Spacer()
+            settingsMenu
             Picker("輸出倍率", selection: $model.outputScale) {
                 ForEach(OutputScale.allCases, id: \.self) { Text("\($0.percent)%").tag($0) }
             }

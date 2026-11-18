@@ -18,6 +18,7 @@ final class AppModel: ObservableObject {
     private enum Key {
         static let saveEnabled = "saveEnabled"
         static let saveFolder = "saveFolder"
+        static let floatsOverAll = "floatsOverAll"
     }
 
     private let defaults = UserDefaults.standard
@@ -39,6 +40,12 @@ final class AppModel: ObservableObject {
     @Published var saveFolder: String? {
         didSet { defaults.set(saveFolder, forKey: Key.saveFolder) }
     }
+    /// 「浮在所有視窗之上」（預設開）；視窗層級由 AppDelegate 觀察後套用。
+    @Published var floatsOverAll: Bool {
+        didSet { defaults.set(floatsOverAll, forKey: Key.floatsOverAll) }
+    }
+    /// 全域快捷鍵註冊結果，由 AppDelegate 寫入。
+    @Published var hotKeyRegistered = false
 
     // MARK: Annotations state
     @Published var mode: EditMode = .layout {
@@ -72,6 +79,7 @@ final class AppModel: ObservableObject {
         outputScale = settings.outputScale
         saveEnabled = defaults.bool(forKey: Key.saveEnabled)
         saveFolder = defaults.string(forKey: Key.saveFolder)
+        floatsOverAll = defaults.object(forKey: Key.floatsOverAll) as? Bool ?? true
     }
 
     // MARK: - Toast
