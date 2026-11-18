@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 public enum AnnotationKind: Equatable {
-    case text, rectangle, arrow, mosaic
+    case text, rectangle, arrow, mosaic, image
 }
 
 /// 座標一律以長圖寬度正規化：x、y、寬、高皆除以長圖寬度（y 由上往下）。
@@ -12,6 +12,19 @@ public enum AnnotationShape: Equatable {
     case rectangle(rect: CGRect, style: LineStyle)
     case arrow(start: CGPoint, end: CGPoint, style: LineStyle)
     case mosaic(rect: CGRect)
+    /// 貼上的圖片；長寬比鎖定（見 `AnnotationImagePlacement`）。圖片以參考相等比較，撤銷快照共用同一個 CGImage。
+    case image(rect: CGRect, image: CGImage)
+
+    public static func == (l: AnnotationShape, r: AnnotationShape) -> Bool {
+        switch (l, r) {
+        case let (.text(a, b, c), .text(d, e, f)): return a == d && b == e && c == f
+        case let (.rectangle(a, b), .rectangle(c, d)): return a == c && b == d
+        case let (.arrow(a, b, c), .arrow(d, e, f)): return a == d && b == e && c == f
+        case let (.mosaic(a), .mosaic(b)): return a == b
+        case let (.image(a, i), .image(b, j)): return a == b && i === j
+        default: return false
+        }
+    }
 }
 
 public enum AnnotationLimits {
@@ -34,13 +47,14 @@ public struct Annotation: Identifiable, Equatable {
         case .rectangle: return .rectangle
         case .arrow: return .arrow
         case .mosaic: return .mosaic
+        case .image: return .image
         }
     }
 
     /// 外框（正規化座標）。
     public var bounds: CGRect {
         switch shape {
-        case let .text(r, _, _), let .rectangle(r, _), let .mosaic(r): return r
+        case let .text(r, _, _), let .rectangle(r, _), let .mosaic(r), let .image(r, _): return r
         case let .arrow(s, e, _):
             return CGRect(x: min(s.x, e.x), y: min(s.y, e.y), width: abs(e.x - s.x), height: abs(e.y - s.y))
         }
@@ -55,6 +69,7 @@ public struct Annotation: Identifiable, Equatable {
         case let .text(r, t, s): copy.shape = .text(rect: Self.clamp(r, h), text: t, style: s)
         case let .rectangle(r, s): copy.shape = .rectangle(rect: Self.clamp(r, h), style: s)
         case let .mosaic(r): copy.shape = .mosaic(rect: Self.clamp(r, h))
+        case let .image(r, img): copy.shape = .image(rect: Self.clampKeepingAspect(r, h), image: img)
         case let .arrow(a, b, s):
             let (a2, b2) = Self.clamp(start: a, end: b, h)
             copy.shape = .arrow(start: a2, end: b2, style: s)
@@ -73,6 +88,7 @@ public struct Annotation: Identifiable, Equatable {
         case let .text(r, t, s): copy.shape = .text(rect: r.offsetBy(dx: ddx, dy: ddy), text: t, style: s)
         case let .rectangle(r, s): copy.shape = .rectangle(rect: r.offsetBy(dx: ddx, dy: ddy), style: s)
         case let .mosaic(r): copy.shape = .mosaic(rect: r.offsetBy(dx: ddx, dy: ddy))
+        case let .image(r, img): copy.shape = .image(rect: r.offsetBy(dx: ddx, dy: ddy), image: img)
         case let .arrow(a, e, s):
             copy.shape = .arrow(start: CGPoint(x: a.x + ddx, y: a.y + ddy),
                                 end: CGPoint(x: e.x + ddx, y: e.y + ddy), style: s)
@@ -88,6 +104,7 @@ public struct Annotation: Identifiable, Equatable {
         case let .text(_, t, s): copy.shape = .text(rect: r, text: t, style: s)
         case let .rectangle(_, s): copy.shape = .rectangle(rect: r, style: s)
         case let .mosaic: copy.shape = .mosaic(rect: r)
+        case let .image(_, img): copy.shape = .image(rect: r, image: img)
         case .arrow: break
         }
         return copy
@@ -112,6 +129,18 @@ public struct Annotation: Identifiable, Equatable {
         let x = min(max(r.minX, 0), 1 - w)
         let y = min(max(r.minY, 0), h - ht)
         return CGRect(x: x, y: y, width: w, height: ht)
+    }
+
+    /// 圖片用：保持長寬比，過大則等比縮小（不小於最小尺寸），再平移進長圖。
+    private static func clampKeepingAspect(_ rect: CGRect, _ canvasH: CGFloat) -> CGRect {
+        let h = height(canvasH)
+        let r = rect.standardized
+        guard r.width > 0, r.height > 0 else { return clamp(r, canvasH) }
+        let down = min(1, 1 / r.width, h / r.height)
+        let up = max(1, AnnotationLimits.minSize / min(r.width, r.height))
+        let k = down < 1 ? down : up
+        let w = r.width * k, ht = r.height * k
+        return CGRect(x: min(max(r.minX, 0), max(1 - w, 0)), y: min(max(r.minY, 0), max(h - ht, 0)), width: w, height: ht)
     }
 
     private static func clamp(start: CGPoint, end: CGPoint, _ canvasH: CGFloat) -> (CGPoint, CGPoint) {

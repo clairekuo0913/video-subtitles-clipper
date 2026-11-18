@@ -89,3 +89,58 @@ public enum AnnotationGeometry {
         return hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
     }
 }
+
+/// 圖片標記的純邏輯：貼上預設位置與長寬比鎖定縮放（正規化座標）。
+public enum AnnotationImagePlacement {
+    /// 貼上時的預設寬度（相對長圖寬度）。
+    public static let defaultWidth: CGFloat = 0.30
+
+    /// 預設矩形：寬 30%（放不下則等比縮小至長圖內），置中於 `center` 並夾限在長圖內。`aspect` = 寬 / 高。
+    public static func defaultRect(canvasHeightRatio: CGFloat, center: CGPoint, aspect: CGFloat) -> CGRect {
+        let canvasH = max(canvasHeightRatio, AnnotationLimits.minSize)
+        let a = aspect > 0 ? aspect : 1
+        var w = defaultWidth, h = w / a
+        if h > canvasH { h = canvasH; w = h * a }
+        if w > 1 { w = 1; h = w / a }
+        let x = min(max(center.x - w / 2, 0), 1 - w)
+        let y = min(max(center.y - h / 2, 0), canvasH - h)
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+
+    /// 拖動把手到 `p` 後、保持 `rect` 長寬比的矩形：對角（邊把手為對邊）固定；
+    /// 角把手以寬、高變化量較大者為準；結果夾限在長圖內且不小於最小尺寸。
+    public static func resizedRect(_ rect: CGRect, dragging handle: AnnotationHandle, to p: CGPoint,
+                                   canvasHeightRatio: CGFloat) -> CGRect {
+        guard rect.width > 0, rect.height > 0 else { return rect }
+        let canvasH = max(canvasHeightRatio, AnnotationLimits.minSize)
+        let sx: CGFloat, sy: CGFloat // 往外長的方向：+1 右／下，-1 左／上，0 該軸不動
+        switch handle {
+        case .topLeft: sx = -1; sy = -1
+        case .top: sx = 0; sy = -1
+        case .topRight: sx = 1; sy = -1
+        case .right: sx = 1; sy = 0
+        case .bottomRight: sx = 1; sy = 1
+        case .bottom: sx = 0; sy = 1
+        case .bottomLeft: sx = -1; sy = 1
+        case .left: sx = -1; sy = 0
+        case .arrowStart, .arrowEnd: return rect
+        }
+        let ax = sx > 0 ? rect.minX : (sx < 0 ? rect.maxX : rect.midX)
+        let ay = sy > 0 ? rect.minY : (sy < 0 ? rect.maxY : rect.midY)
+
+        var scale: CGFloat = 0
+        if sx != 0 { scale = max(scale, max(sx * (p.x - ax), 0) / rect.width) }
+        if sy != 0 { scale = max(scale, max(sy * (p.y - ay), 0) / rect.height) }
+
+        let availW = sx == 0 ? 2 * min(ax, 1 - ax) : (sx > 0 ? 1 - ax : ax)
+        let availH = sy == 0 ? 2 * min(ay, canvasH - ay) : (sy > 0 ? canvasH - ay : ay)
+        let maxScale = max(min(availW / rect.width, availH / rect.height), 0)
+        let minScale = AnnotationLimits.minSize / min(rect.width, rect.height)
+        scale = min(max(scale, minScale), maxScale)
+
+        let w = rect.width * scale, h = rect.height * scale
+        let x = sx > 0 ? ax : (sx < 0 ? ax - w : ax - w / 2)
+        let y = sy > 0 ? ay : (sy < 0 ? ay - h : ay - h / 2)
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+}

@@ -30,7 +30,11 @@ struct ComposeView: View {
         VStack(spacing: 0) {
             toolbar
             modeBar
-            if model.mode == .annotate { AnnotationToolbar(model: model) }
+            // 常駐固定高度：排版模式保留同高度空白，避免切換模式時長圖位移。
+            AnnotationToolbar(model: model)
+                .opacity(model.mode == .annotate ? 1 : 0)
+                .allowsHitTesting(model.mode == .annotate)
+                .accessibilityHidden(model.mode != .annotate)
             Divider()
             content
         }
@@ -80,7 +84,9 @@ struct ComposeView: View {
     // 隱藏按鈕承接快捷鍵（選單列 App 沒有主選單）。
     private var shortcuts: some View {
         ZStack {
-            Button("") { model.pasteFromClipboard() }.keyboardShortcut("v", modifiers: .command)
+            // 文字框編輯中交給輸入框（按鈕停用時快捷鍵不攔截）。
+            Button("") { paste() }.keyboardShortcut("v", modifiers: .command)
+                .disabled(model.textEdit != nil)
             Button("") { zoom = ViewZoom.zoomedIn(zoom) }.keyboardShortcut("=", modifiers: .command)
             Button("") { zoom = ViewZoom.zoomedOut(zoom) }.keyboardShortcut("-", modifiers: .command)
             Button("") { zoom = ViewZoom.default }.keyboardShortcut("0", modifiers: .command)
@@ -88,6 +94,15 @@ struct ComposeView: View {
                 .disabled(model.mode != .annotate || model.textEdit != nil)
         }
         .opacity(0).frame(width: 0, height: 0)
+    }
+
+    /// 標記模式貼上為圖片標記（置於可視範圍中心），排版模式維持匯入。
+    private func paste() {
+        if model.mode == .annotate {
+            model.pasteImageAnnotation(visibleCenter: scrollAccess.visibleCenter())
+        } else {
+            model.pasteFromClipboard()
+        }
     }
 
     // MARK: List
@@ -422,6 +437,19 @@ final class ScrollAccess {
     weak var scrollView: NSScrollView?
 
     var offset: Double { Double(scrollView?.contentView.bounds.origin.y ?? 0) }
+
+    /// 目前可視範圍中心（長圖寬度正規化座標）。長圖寬 = 垂直捲動內容寬；水平以外層捲動視窗換算（內容比視窗窄時為 0.5）。
+    /// 取不到捲動視窗時退回 (0.5, 0)。
+    func visibleCenter() -> CGPoint {
+        guard let sv = scrollView, let doc = sv.documentView, doc.frame.width > 0 else { return CGPoint(x: 0.5, y: 0) }
+        let w = Double(doc.frame.width)
+        let clip = sv.contentView.bounds
+        var x = 0.5
+        if let outer = sv.enclosingScrollView, w > Double(outer.contentView.bounds.width) + 0.5 {
+            x = Double(outer.contentView.bounds.midX) / w
+        }
+        return CGPoint(x: min(max(x, 0), 1), y: (Double(clip.origin.y) + Double(clip.height) / 2) / w)
+    }
 
     func scroll(by dy: Double) {
         guard let sv = scrollView, let doc = sv.documentView else { return }

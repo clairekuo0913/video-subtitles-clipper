@@ -134,6 +134,11 @@ struct AnnotationLayer: View {
             if case let .arrow(s, e, _) = original.shape {
                 model.annotations.resize(id: original.id, start: handle == .arrowStart ? p : s,
                                          end: handle == .arrowEnd ? p : e, canvasHeightRatio: ratio, recordUndo: false)
+            } else if original.kind == .image {
+                model.annotations.resize(id: original.id,
+                                         to: AnnotationImagePlacement.resizedRect(original.bounds, dragging: handle, to: p,
+                                                                                  canvasHeightRatio: ratio),
+                                         canvasHeightRatio: ratio, recordUndo: false)
             } else {
                 model.annotations.resize(id: original.id,
                                          to: AnnotationGeometry.resizedRect(original.bounds, dragging: handle, to: p),

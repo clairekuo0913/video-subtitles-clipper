@@ -54,6 +54,9 @@ public enum AnnotationRenderer {
                 ctx.stroke(px(r))
             case let .arrow(start, end, s):
                 drawArrow(ctx, from: pt(start), to: pt(end), width: max(1, CGFloat(s.width) * w), color: s.color.cgColor)
+            case let .image(r, image):
+                ctx.interpolationQuality = .high
+                ctx.draw(image, in: px(r))
             case let .text(r, text, s):
                 drawText(ctx, rect: px(r), text: text, style: s, canvasWidth: w)
             }

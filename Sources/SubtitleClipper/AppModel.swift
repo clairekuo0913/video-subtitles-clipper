@@ -111,14 +111,17 @@ final class AppModel: ObservableObject {
             importFiles(urls)
             return
         }
-        guard let nsImage = NSImage(pasteboard: pb),
-              let cg = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+        guard let cg = Self.clipboardImage(),
               let thumb = ImageLoading.thumbnail(of: cg)
         else {
             show("剪貼簿沒有圖片", isError: true)
             return
         }
         add([LoadedImage(name: "貼上的圖片", image: cg, thumbnail: thumb)])
+    }
+
+    private static func clipboardImage() -> CGImage? {
+        NSImage(pasteboard: .general)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
     private func add(_ images: [LoadedImage]) {
@@ -258,6 +261,25 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// 標記模式 Cmd+V：剪貼簿有圖片 → 加入圖片標記於 `center`（正規化座標，通常為可視範圍中心），選取並回到選取工具。
+    func pasteImageAnnotation(visibleCenter center: CGPoint) {
+        commitTextEdit()
+        guard !list.items.isEmpty else {
+            show("請先匯入圖片", isError: true)
+            return
+        }
+        guard let cg = Self.clipboardImage(), cg.width > 0, cg.height > 0 else {
+            show("剪貼簿沒有圖片", isError: true)
+            return
+        }
+        let ratio = canvasHeightRatio
+        let rect = AnnotationImagePlacement.defaultRect(canvasHeightRatio: ratio, center: center,
+                                                        aspect: CGFloat(cg.width) / CGFloat(cg.height))
+        let added = annotations.add(Annotation(shape: .image(rect: rect, image: cg)), canvasHeightRatio: ratio)
+        tool = .select
+        annotationSelection = added.id
+    }
+
     func deleteSelectedAnnotation() {
         guard let id = annotationSelection, textEdit == nil else { return }
         if annotations.remove(id: id) { annotationSelection = nil }
@@ -276,7 +298,7 @@ final class AppModel: ObservableObject {
 
     /// 樣式面板種類：有目標時看目標，否則看目前工具（馬賽克、選取無樣式）。
     var styleKind: AnnotationKind? {
-        if let t = styleTarget { return t.kind == .mosaic ? nil : t.kind }
+        if let t = styleTarget { return t.kind == .mosaic || t.kind == .image ? nil : t.kind }
         switch tool {
         case .text: return .text
         case .rectangle: return .rectangle
@@ -298,16 +320,17 @@ final class AppModel: ObservableObject {
     }
 
     /// 修改樣式：即時套用於目標（進撤銷），並寫回「上次樣式」。
-    func setTextStyle(_ style: TextStyle) {
+    /// `continuous`（調色盤連續拖曳）時，短時間內同一目標的連續更新合併為一個撤銷步驟。
+    func setTextStyle(_ style: TextStyle, continuous: Bool = false) {
         styleStore.textStyle = style
-        applyToTarget { a in
+        applyToTarget(continuous: continuous) { a in
             if case let .text(r, t, _) = a.shape { a.shape = .text(rect: r, text: t, style: style) }
         }
     }
 
-    func setLineStyle(_ style: LineStyle) {
+    func setLineStyle(_ style: LineStyle, continuous: Bool = false) {
         if styleKind == .arrow { styleStore.arrowStyle = style } else { styleStore.rectangleStyle = style }
-        applyToTarget { a in
+        applyToTarget(continuous: continuous) { a in
             switch a.shape {
             case let .rectangle(r, _): a.shape = .rectangle(rect: r, style: style)
             case let .arrow(s, e, _): a.shape = .arrow(start: s, end: e, style: style)
@@ -316,12 +339,25 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func applyToTarget(_ body: (inout Annotation) -> Void) {
+    private var lastContinuousStyle: (id: UUID, time: Date)?
+    private static let continuousStyleWindow: TimeInterval = 0.6
+
+    private func applyToTarget(continuous: Bool = false, _ body: (inout Annotation) -> Void) {
         if var te = textEdit, te.isNew {
             body(&te.pending)
             textEdit = te
         } else if let id = textEdit?.id ?? annotationSelection {
-            annotations.update(id: id, body)
+            var record = true
+            if continuous {
+                let now = Date()
+                if let last = lastContinuousStyle, last.id == id, now.timeIntervalSince(last.time) < Self.continuousStyleWindow {
+                    record = false
+                }
+                lastContinuousStyle = (id, now)
+            } else {
+                lastContinuousStyle = nil
+            }
+            annotations.update(id: id, recordUndo: record, body)
         }
         objectWillChange.send()
     }
