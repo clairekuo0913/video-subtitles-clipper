@@ -148,6 +148,25 @@ final class StitcherTests: XCTestCase {
         XCTAssertEqual(pixel(out, x: 5, y: 29).2, 255)
     }
 
+    func testPerSceneBandsChangeSubtitleHeights() throws {
+        // 兩幕：f(100) s(100) | f(100) s(100)；第一幕預設 0.5-1.0 → 50，第二幕自訂 0.7-0.9 → 20
+        var l = ComposeList()
+        l.append(image: solidImage(width: 10, height: 100), name: "f1")
+        l.append(image: solidImage(width: 10, height: 100), name: "s1")
+        let f2 = l.append(image: solidImage(width: 10, height: 100), name: "f2")
+        l.append(image: solidImage(width: 10, height: 100), name: "s2")
+        _ = l.setKind(id: f2.id, to: .frame)
+        _ = l.setBand(CropBand(top: 0.7, bottom: 0.9), forFrame: f2.id)
+        let out = try XCTUnwrap(Stitcher.stitch(l, band: half))
+        XCTAssertEqual(out.height, 100 + 50 + 100 + 20)
+    }
+
+    func testNoOverrideMatchesSingleBandOutput() throws {
+        let l = build([(10, 100), (10, 100), (10, 100), (10, 100)], frames: [0, 2])
+        let out = try XCTUnwrap(Stitcher.stitch(l, band: half))
+        XCTAssertEqual(out.height, 100 + 50 + 100 + 50)
+    }
+
     func testCanvasIsOpaqueBlack() throws {
         let canvas = try XCTUnwrap(Stitcher.makeCanvas(width: 6, height: 4))
         let img = try XCTUnwrap(canvas.makeImage())

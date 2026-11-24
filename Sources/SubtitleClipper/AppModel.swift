@@ -28,9 +28,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var thumbnails: [UUID: CGImage] = [:]
     @Published var selection: UUID?
     @Published var toast: Toast?
-    @Published var band: CropBand {
-        didSet { settings.band = band }
-    }
+    /// 第一幕未自訂時的生效紅框（亦為後續未自訂幕的起點）。
+    @Published private(set) var defaultBand: CropBand
     @Published var outputScale: OutputScale {
         didSet { settings.outputScale = outputScale }
     }
@@ -75,11 +74,21 @@ final class AppModel: ObservableObject {
     }
 
     init() {
-        band = settings.band
+        defaultBand = settings.band
         outputScale = settings.outputScale
         saveEnabled = defaults.bool(forKey: Key.saveEnabled)
         saveFolder = defaults.string(forKey: Key.saveFolder)
         floatsOverAll = defaults.object(forKey: Key.floatsOverAll) as? Bool ?? true
+    }
+
+    /// 各項目生效的紅框（依 list 與 defaultBand 計算）。
+    var effectiveBands: [UUID: CropBand] { list.effectiveBands(default: defaultBand) }
+
+    /// 拖曳畫面項目紅框：第一幕更新 defaultBand，其他幕只寫該項目覆寫；兩者都記住本次範圍。
+    func setBand(_ band: CropBand, forFrame id: UUID) {
+        if list.items.first?.id == id { defaultBand = band }
+        else if case .failure = list.setBand(band, forFrame: id) { return }
+        settings.band = band
     }
 
     // MARK: - Toast
@@ -184,7 +193,7 @@ final class AppModel: ObservableObject {
             return
         }
         commitTextEdit()
-        let snapshot = list, band = band, scale = outputScale
+        let snapshot = list, band = defaultBand, scale = outputScale
         let marks = annotations.annotations
         let folder = saveEnabled ? saveFolder : nil
         Task {
@@ -219,9 +228,10 @@ final class AppModel: ObservableObject {
     /// 長圖高 / 寬（各列等比縮到同寬後加總，與 Stitcher 及畫面列高一致）。
     var canvasHeightRatio: CGFloat {
         var sum = 0.0
+        let bands = effectiveBands
         for item in list.items {
             guard let t = thumbnails[item.id], t.width > 0 else { continue }
-            let rows = item.kind == .frame ? t.height : band.rows(imageHeight: t.height).count
+            let rows = item.kind == .frame ? t.height : (bands[item.id] ?? defaultBand).rows(imageHeight: t.height).count
             sum += Double(rows) / Double(t.width)
         }
         return CGFloat(sum)

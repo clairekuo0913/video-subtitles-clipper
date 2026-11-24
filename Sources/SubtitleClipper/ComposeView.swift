@@ -180,9 +180,10 @@ struct ComposeView: View {
     /// 各列實際顯示高度（隨縮放，與 ItemRow 的顯示尺寸一致；不依賴 LazyVStack 是否已載入）。
     private func rowHeights(baseWidth: CGFloat) -> [Double] {
         let w = Double(baseWidth * zoom)
+        let bands = model.effectiveBands
         return model.list.items.map { item in
             guard let t = model.thumbnails[item.id], t.width > 0 else { return 60 }
-            let rows = item.kind == .frame ? t.height : model.band.rows(imageHeight: t.height).count
+            let rows = item.kind == .frame ? t.height : (bands[item.id] ?? model.defaultBand).rows(imageHeight: t.height).count
             return w * Double(rows) / Double(t.width)
         }
     }
@@ -191,19 +192,20 @@ struct ComposeView: View {
         let sceneIndex = sceneNumbers()
         let heights = rowHeights(baseWidth: baseWidth)
         let items = model.list.items
+        let bands = model.effectiveBands
         return ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(items) { item in
                     ItemRow(item: item,
                             thumbnail: model.thumbnails[item.id],
-                            band: model.band,
+                            band: bands[item.id] ?? model.defaultBand,
                             zoom: zoom,
                             baseWidth: baseWidth,
                             scene: sceneIndex[item.id] ?? 1,
                             isSelected: model.selection == item.id,
                             isDragging: drag?.id == item.id,
                             onToggle: { model.toggleKind(item.id) },
-                            onBand: { model.band = $0 })
+                            onBand: { model.setBand($0, forFrame: item.id) })
                         .contentShape(Rectangle())
                         .onTapGesture {
                             model.selection = item.id

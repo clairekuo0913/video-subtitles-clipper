@@ -9,7 +9,7 @@ final class AnnotationPreview: ObservableObject {
     struct BaseKey: Equatable {
         let ids: [UUID]
         let kinds: [ItemKind]
-        let band: CropBand
+        let bands: [CropBand]
     }
 
     struct Request {
@@ -67,7 +67,10 @@ final class AnnotationPreview: ObservableObject {
             let item = list.append(image: downscale(img, by: factor), name: "")
             if item.kind != r.key.kinds[i] { _ = list.setKind(id: item.id, to: r.key.kinds[i]) }
         }
-        return Stitcher.stitch(list, band: r.key.band)
+        for (i, item) in list.items.enumerated() where item.kind == .frame {
+            _ = list.setBand(r.key.bands[i], forFrame: item.id)
+        }
+        return Stitcher.stitch(list, band: r.key.bands.first ?? .default)
     }
 
     nonisolated private static func downscale(_ image: CGImage, by f: Double) -> CGImage {

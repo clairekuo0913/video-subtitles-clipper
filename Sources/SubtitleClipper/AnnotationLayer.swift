@@ -37,7 +37,7 @@ struct AnnotationLayer: View {
     }
 
     private var previewKey: PreviewKey {
-        PreviewKey(base: .init(ids: model.list.items.map(\.id), kinds: model.list.items.map(\.kind), band: model.band),
+        PreviewKey(base: .init(ids: model.list.items.map(\.id), kinds: model.list.items.map(\.kind), bands: model.list.items.map { model.effectiveBands[$0.id] ?? model.defaultBand }),
                    annotations: model.annotations.annotations, excluded: excludedID)
     }
 

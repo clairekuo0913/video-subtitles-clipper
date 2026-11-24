@@ -16,7 +16,7 @@ public enum Stitcher {
     }
 
     /// 垂直拼接。寬度以第一項為基準；異寬者等比縮放（高度四捨五入，至少 1）。
-    /// 所有項目（含幕間）無縫，黑底；純字幕以 `band` 裁切；接著繪製標記（座標以長圖寬度正規化），最後套用輸出倍率。
+    /// 所有項目（含幕間）無縫，黑底；純字幕以所屬幕的生效紅框裁切（`band` 為第一幕預設）；接著繪製標記（座標以長圖寬度正規化），最後套用輸出倍率。
     /// 空清單回傳 nil；無標記時與舊行為逐像素相同。
     public static func stitch(_ list: ComposeList, band: CropBand,
                               outputScale: OutputScale = .default,
@@ -26,10 +26,11 @@ public enum Stitcher {
 
         struct Piece { let image: CGImage; let height: Int }
         var pieces: [Piece] = []
+        let bands = list.effectiveBands(default: band)
         for item in list.scenes.joined() {
             let source: CGImage
             if item.kind == .subtitle {
-                guard let cropped = SubtitleCrop.crop(item.image, band: band) else { return nil }
+                guard let cropped = SubtitleCrop.crop(item.image, band: bands[item.id] ?? band) else { return nil }
                 source = cropped
             } else {
                 source = item.image

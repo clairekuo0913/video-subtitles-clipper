@@ -11,12 +11,15 @@ public struct ComposeItem: Identifiable {
     public let image: CGImage
     public var kind: ItemKind
     public var name: String
+    /// 僅 frame 有意義：該幕自訂紅框；nil 表示沿用前一幕生效值。
+    public var band: CropBand?
 
-    public init(id: UUID = UUID(), image: CGImage, kind: ItemKind, name: String) {
+    public init(id: UUID = UUID(), image: CGImage, kind: ItemKind, name: String, band: CropBand? = nil) {
         self.id = id
         self.image = image
         self.kind = kind
         self.name = name
+        self.band = band
     }
 }
 
@@ -61,7 +64,28 @@ public struct ComposeList {
         }
         if index == 0 && kind == .subtitle { return .failure(.firstItemMustBeFrame) }
         items[index].kind = kind
+        items[index].band = nil
         return .success(())
+    }
+
+    /// 設定畫面項目的紅框覆寫；對字幕或不存在的 id 回傳 `.itemNotFound`。
+    public mutating func setBand(_ band: CropBand, forFrame id: ComposeItem.ID) -> Result<Void, ComposeError> {
+        guard let index = items.firstIndex(where: { $0.id == id && $0.kind == .frame }) else {
+            return .failure(.itemNotFound)
+        }
+        items[index].band = band
+        return .success(())
+    }
+
+    /// 各項目實際生效的紅框：frame 取 `band ?? 前一幕生效值 ?? default`，subtitle 取所屬幕的生效值。
+    public func effectiveBands(default defaultBand: CropBand) -> [ComposeItem.ID: CropBand] {
+        var result: [ComposeItem.ID: CropBand] = [:]
+        var current = defaultBand
+        for item in items {
+            if item.kind == .frame { current = item.band ?? current }
+            result[item.id] = current
+        }
+        return result
     }
 
     public mutating func toggleKind(id: ComposeItem.ID) -> Result<Void, ComposeError> {
@@ -75,7 +99,10 @@ public struct ComposeList {
             return .failure(.itemNotFound)
         }
         items.remove(at: index)
-        if !items.isEmpty { items[0].kind = .frame }
+        if !items.isEmpty && items[0].kind != .frame {
+            items[0].kind = .frame
+            items[0].band = nil
+        }
         return .success(())
     }
 
